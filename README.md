@@ -1,8 +1,29 @@
 # hermes.skills
 
-Personal/shared Hermes Agent skills maintained by Chris/Bitbull.
+Generic, reusable Hermes Agent skills maintained by Chris/Bitbull.
 
-This repository is intended to be copied or cloned into Hermes instances and profiles. It currently contains reusable skills plus helper scripts for operational setup.
+This repository is intended to be copied or cloned into Hermes instances and profiles. It contains only generic skills plus helper scripts for operational setup.
+
+## Scope: generic only
+
+Skills in this repository must be reusable outside one specific customer, host, profile, or private environment.
+
+Allowed:
+
+- generic Hermes operations and troubleshooting workflows
+- reusable scripts that derive paths from `HERMES_HOME` or `$HOME`
+- examples with placeholders such as `<profile>`, `<repo>`, `<host>`, `<token>`
+- public/open-source tooling knowledge
+
+Not allowed:
+
+- secrets, tokens, credentials, private URLs, private IPs, internal hostnames
+- customer-specific runbooks or infrastructure details
+- hardcoded local paths except standard Hermes paths like `~/.hermes/...`
+- personal data or chat/session artifacts
+- claims that require Chris's specific environment unless written as a generic example
+
+If a skill needs local/private details, keep those in a separate private repo, Ansible inventory, environment variables, or profile-local config — not here. Git is forever-ish, and very good at remembering your mistakes. Annoyingly good.
 
 ## Repository layout
 
