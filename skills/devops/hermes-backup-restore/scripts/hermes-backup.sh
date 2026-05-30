@@ -165,8 +165,8 @@ do_backup() {
     tar czf "${archive}" \
         --owner=0 --group=0 \
         --transform "s|^|hermes-backup-${HOSTNAME}-${DATE}/|" \
-        --files-from "${tmpfile}" \
-        -C "${src}" 2>&1
+        -C "${src}" \
+        --files-from "${tmpfile}" 2>&1
 
     local archive_size
     archive_size=$(stat -c%s "${archive}" 2>/dev/null || echo 0)
@@ -207,7 +207,7 @@ do_restore() {
 
     # ── Top-Level-Dir im Archiv ermitteln ──
     local topdir
-    topdir=$(tar tzf "${archive}" | head -1 | cut -d/ -f1)
+    topdir=$(tar tzf "${archive}" 2>/dev/null | head -1 | cut -d/ -f1) || true
     if [[ -z "$topdir" ]]; then
         echo "❌ Leeres Archiv oder nicht lesbar."
         exit 1
