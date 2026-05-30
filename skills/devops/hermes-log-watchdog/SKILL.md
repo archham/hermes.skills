@@ -1,7 +1,7 @@
 ---
 name: hermes-log-watchdog
-description: Use when configuring Hermes instances to monitor their own logs with a checkpointed logtail-style cron watchdog that alerts only on new warnings/errors.
-version: 1.0.0
+description: Use when configuring Hermes instances to monitor their own logs with a checkpointed logtail-style cron watchdog. When errors are found, the LLM agent analyzes root cause, searches for solutions, and delivers a structured summary.
+version: 2.0.0
 author: Hermes Agent
 license: AGPL-3.0-only
 metadata:
@@ -14,23 +14,24 @@ metadata:
 
 ## Overview
 
-This skill installs a small script-only Hermes cron job that scans `~/.hermes/logs/*.log` for new `WARNING`, `ERROR`, `CRITICAL`, `FATAL`, `EXCEPTION`, and `TRACEBACK` lines.
+This skill installs an LLM-driven Hermes cron job that scans `~/.hermes/logs/*.log` for new `WARNING`, `ERROR`, `CRITICAL`, `FATAL`, `EXCEPTION`, and `TRACEBACK` lines.
 
 It behaves like a persistent `logtail`: every log file gets a byte-offset checkpoint, so old errors are not reported again on every run. The cron job is silent when nothing new is found and sends a compact alert only when new suspicious log lines appear.
+
+**New in v2.0:** The watchdog is now LLM-driven. When errors are found, the agent analyzes each pattern, searches for root causes, proposes concrete fixes, and delivers a structured summary (Problem → Ursache → Lösung). When no errors are found, it responds with a simple "alles sauber" confirmation.
 
 ## When to Use
 
 Use this when:
 
 - A Hermes instance should watch its own gateway/agent/error logs.
-- The user wants alerts a few times per day, not continuous noise.
+- The user wants alerts with root-cause analysis, not just raw log lines.
 - Old/historical errors should not be repeatedly reported.
 - You are configuring multiple Hermes profiles or hosts with the same watchdog pattern.
 
 Do not use this for:
 
 - Real-time production monitoring with paging/SLOs.
-- Deep stacktrace analysis; this script reports matching log lines, it does not reconstruct full exceptions.
 - Non-Hermes services unless you adapt `LOG_DIR` and patterns.
 
 ## Files and State
@@ -54,6 +55,20 @@ Log source:
 ```
 
 The first run initializes checkpoints at EOF and stays silent for existing files. That is intentional: it avoids sending historical log spam.
+
+## How It Works
+
+1. The `check_hermes_logs.py` script scans log files incrementally (byte-offset checkpointing).
+2. When warnings/errors are found, the script outputs matching patterns and examples.
+3. The LLM agent receives this output and:
+   - Analyzes each unique error/warning pattern
+   - Searches for root causes (configs, system state, recent changes)
+   - Finds or proposes concrete solutions
+   - Delivers a structured summary in German (Swiss style):
+     - **Problem:** was ist passiert
+     - **Ursache:** warum ist es passiert
+     - **Lösung:** wie wird es behoben
+4. When no errors are found, the agent responds: "✅ Keine neuen Fehler oder Warnungen in den Hermes-Logs."
 
 ## Installation on One Hermes Instance
 
@@ -79,7 +94,7 @@ hermes skills list | grep hermes-log-watchdog
 
 Expected on first run: no output unless a log file cannot be read.
 
-3. Create the script-only cron job:
+3. Create the cron job:
 
 ```bash
 hermes cron create '0 8,20 * * *'
@@ -89,8 +104,9 @@ Configure the job with:
 
 - name: `Hermes log watchdog`
 - script: `check_hermes_logs.py`
-- no-agent/script-only mode: enabled
+- no-agent: **disabled** (LLM-driven, not script-only)
 - delivery: origin/home channel as appropriate
+- prompt: the analysis prompt (see below)
 
 If using the Hermes tool API, the equivalent is:
 
@@ -100,9 +116,9 @@ If using the Hermes tool API, the equivalent is:
   "name": "Hermes log watchdog",
   "schedule": "0 8,20 * * *",
   "script": "check_hermes_logs.py",
-  "no_agent": true,
+  "no_agent": false,
   "deliver": "origin",
-  "prompt": "Script-only watchdog: scan Hermes logs and notify only when warnings/errors are found."
+  "prompt": "The script check_hermes_logs.py scans Hermes logs incrementally and outputs any new warnings/errors found since the last check.\n\n## Your task\nIf the script output contains warnings or errors:\n1. Analyze each unique error/warning pattern\n2. For each distinct issue: search for the root cause (check configs, recent changes, system state)\n3. Find or propose a concrete solution for each issue\n4. Deliver a clear summary in German (Swiss style, ss not ß):\n\n**Zusammenfassung:**\n- **Problem:** was ist passiert\n- **Ursache:** warum ist es passiert\n- **Lösung:** wie wird es behoben\n\nIf the script output is empty (no errors found), respond with only: \"✅ Keine neuen Fehler oder Warnungen in den Hermes-Logs.\"\n\nKeep it concise. Prioritize actionable fixes over noise."
 }
 ```
 
@@ -113,6 +129,25 @@ Important: cron `script` must be relative to `~/.hermes/scripts/`. Use `check_he
 ```bash
 hermes cron list
 python ~/.hermes/scripts/check_hermes_logs.py
+```
+
+## Upgrading from v1.0 (script-only) to v2.0 (LLM-driven)
+
+If you already have a v1.0 watchdog running, update it:
+
+```bash
+hermes cron update <job-id> --no-agent=false --prompt "<analysis prompt from above>"
+```
+
+Or via the cron tool API:
+
+```json
+{
+  "action": "update",
+  "job_id": "<job-id>",
+  "no_agent": false,
+  "prompt": "..."
+}
 ```
 
 ## Installing for a Named Profile
@@ -168,11 +203,14 @@ Keep ignore rules conservative. The watchdog is only useful if it still reports 
 
 5. **Cron job not delivering.** Check `hermes cron list`, `hermes cron status`, gateway status, and the job's `last_delivery_error`.
 
+6. **Leaving no_agent=true after upgrading.** The v2.0 watchdog requires `no_agent: false` so the LLM can analyze errors. If no_agent stays true, you only get raw script output without root-cause analysis.
+
 ## Verification Checklist
 
 - [ ] `~/.hermes/scripts/check_hermes_logs.py` exists and is executable.
 - [ ] Running the script once creates `~/.hermes/state/log-watchdog-checkpoints.json`.
 - [ ] A second immediate run is silent when no new log issues were written.
 - [ ] `hermes cron list` shows `Hermes log watchdog` enabled.
+- [ ] Cron job uses `no_agent: false` (LLM-driven mode).
 - [ ] Cron job uses `script: check_hermes_logs.py`, not an absolute path.
 - [ ] Delivery target points to the intended home/origin channel.
