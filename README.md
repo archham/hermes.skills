@@ -111,5 +111,6 @@ Important: the cron `script` field must be relative to the Hermes scripts direct
 ## Current skills
 
 - `devops/hermes-log-watchdog`: checkpointed Hermes log monitoring via script-only cron job.
+- `devops/hermes-ssh-namespace-wrapper`: context-local SSH wrapper for Hermes/systemd user-namespace runtimes where OpenSSH sees root-owned system config as `nobody:nobody`.
 - `devops/hetzner-ansible-lab`: temporary Hetzner Cloud VM lifecycle for Ansible QA, including Rocky 8 bootstrap, independent verification, cleanup, and sanitized reporting.
 - `devops/web-resource-fetch-fallbacks`: ordered URL fetch workflow using curl/Python, Playwright Chromium, then CloakBrowser CDP.
