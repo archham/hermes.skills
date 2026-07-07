@@ -8,9 +8,15 @@ Usage:
   install-hermes-ssh-wrapper.sh --install [--force] [--install-dir DIR]
   install-hermes-ssh-wrapper.sh --remove
 
-Installs a context-local ssh wrapper for Hermes runtimes where OpenSSH sees
-root-owned /etc/ssh config files as nobody:nobody because of systemd user
-namespaces / PrivateUsers sandboxing.
+Installs a context-local ssh wrapper for FreeIPA-joined Hermes runtimes where
+OpenSSH sees root-owned /etc/ssh config files as nobody:nobody because of
+systemd user namespaces / PrivateUsers sandboxing.
+
+This wrapper is normally only needed when FreeIPA's SSH client drop-in exists:
+  /etc/ssh/ssh_config.d/04-ipa.conf
+
+If that file is absent, --install exits without changing anything unless
+--force is supplied.
 
 Environment used by the installed wrapper:
   HERMES_SSH_WRAPPER_DISABLE=1   bypass wrapper and exec real ssh
@@ -60,6 +66,7 @@ fi
 
 wrapper_path="$install_dir/ssh"
 marker="HERmes SSH namespace wrapper"
+ipa_ssh_config="/etc/ssh/ssh_config.d/04-ipa.conf"
 
 run_diagnose() {
   echo "== Identity =="
@@ -79,6 +86,16 @@ run_diagnose() {
   done
 
   echo
+  echo "== FreeIPA SSH client drop-in =="
+  if [[ -e "$ipa_ssh_config" ]]; then
+    echo "present: $ipa_ssh_config"
+    stat -c '%n %A %a %u:%g %U:%G' "$ipa_ssh_config" || true
+  else
+    echo "absent: $ipa_ssh_config"
+    echo "This FreeIPA-specific Hermes SSH wrapper is normally not needed on this system."
+  fi
+
+  echo
   echo "== OpenSSH parse test without wrapper =="
   if command -v /usr/bin/ssh >/dev/null 2>&1; then
     /usr/bin/ssh -G github.com >/tmp/hermes-ssh-wrapper-diagnose.out 2>&1 && rc=0 || rc=$?
@@ -95,6 +112,13 @@ run_diagnose() {
 }
 
 install_wrapper() {
+  if [[ ! -e "$ipa_ssh_config" && "$force" -ne 1 ]]; then
+    echo "ERROR: $ipa_ssh_config is not present." >&2
+    echo "This skill is for FreeIPA-joined Hermes systems with the FreeIPA SSH client drop-in." >&2
+    echo "No wrapper installed. Use --force only after confirming an equivalent FreeIPA SSH config path." >&2
+    exit 1
+  fi
+
   mkdir -p "$install_dir"
 
   if [[ -e "$wrapper_path" ]] && ! grep -q "$marker" "$wrapper_path" 2>/dev/null; then

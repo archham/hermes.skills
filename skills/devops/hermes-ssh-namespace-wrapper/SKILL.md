@@ -1,7 +1,7 @@
 ---
 name: hermes-ssh-namespace-wrapper
-description: Fix OpenSSH client config ownership failures inside systemd user-service/user-namespace Hermes runtimes by installing a context-local ssh wrapper that mirrors system config into a safe user-owned cache.
-version: 1.0.0
+description: Fix OpenSSH client config ownership failures on FreeIPA-joined Hermes instances by installing a context-local ssh wrapper that mirrors system config into a safe user-owned cache.
+version: 1.0.1
 author: Hermes Agent
 license: MIT
 platforms: [linux]
@@ -13,9 +13,19 @@ metadata:
 
 # Hermes SSH Namespace Wrapper
 
+## Scope
+
+This skill is only meant for **Hermes instances running on FreeIPA-joined Linux systems** where FreeIPA installed the SSH client drop-in:
+
+```text
+/etc/ssh/ssh_config.d/04-ipa.conf
+```
+
+If `/etc/ssh/ssh_config.d/04-ipa.conf` is not present, this specific FreeIPA/Hermes workaround is normally **not needed**. Diagnose the local SSH error separately instead of installing this wrapper by default.
+
 ## Problem
 
-A Hermes instance running as a systemd **user** service can execute tools inside a restricted user namespace. This commonly happens when a service uses sandboxing options such as `ProtectHome=read-only`; in per-user service managers, systemd may implicitly enable `PrivateUsers=` for namespace support.
+A Hermes instance running as a systemd **user** service on a FreeIPA-joined system can execute tools inside a restricted user namespace. This commonly happens when a service uses sandboxing options such as `ProtectHome=read-only`; in per-user service managers, systemd may implicitly enable `PrivateUsers=` for namespace support.
 
 Inside that namespace, host-owned `root:root` files may appear as `nobody:nobody` because UID/GID 0 is not mapped into the service's user namespace. OpenSSH then rejects otherwise-correct global client config files:
 
@@ -41,8 +51,9 @@ This is not an SSH target problem. It is the local execution context in which `s
 
 ## When to Use
 
-Use this skill when:
+Use this skill when all of the following are true:
 
+- The system is FreeIPA-joined, indicated by `/etc/ssh/ssh_config.d/04-ipa.conf` being present.
 - Hermes terminal commands fail before connecting with `Bad owner or permissions on /etc/ssh/...`.
 - `stat -c '%u:%g %U:%G %n' /etc/ssh/ssh_config.d/*.conf` inside Hermes shows `65534:65534 nobody:nobody`, but the host/root shell shows `0:0 root:root`.
 - `/proc/self/uid_map` inside Hermes maps only the Hermes user UID, for example:
@@ -53,7 +64,7 @@ Use this skill when:
 
 - You need a reusable workaround on Hermes installations where you cannot or do not want to remove the service sandbox immediately.
 
-Do **not** use this as the first fix when the host files are actually misowned or group/world-writable. In that case fix host permissions first.
+Do **not** use this as the first fix when `/etc/ssh/ssh_config.d/04-ipa.conf` is absent or when the host files are actually misowned or group/world-writable. In those cases, diagnose the actual local SSH problem or fix host permissions first.
 
 ## Preferred Fix Order
 
@@ -83,6 +94,8 @@ After installing this skill into a Hermes profile, run:
 ~/.hermes/skills/devops/hermes-ssh-namespace-wrapper/scripts/install-hermes-ssh-wrapper.sh --diagnose
 ~/.hermes/skills/devops/hermes-ssh-namespace-wrapper/scripts/install-hermes-ssh-wrapper.sh --install
 ```
+
+The installer refuses to install unless `/etc/ssh/ssh_config.d/04-ipa.conf` exists. Use `--force` only if you have manually confirmed that an equivalent FreeIPA SSH drop-in exists under a different path.
 
 For a named profile:
 
